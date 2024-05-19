@@ -24,7 +24,7 @@
 
 ;;; Code:
 
-
+(defvar shared-directory "/Users/zhiyouliu/SynologyDrive")
 
 (provide 'zhiyous-macbook-pro-local)
 ;;; zhiyous-macbook-pro-local.el ends here
