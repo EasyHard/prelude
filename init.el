@@ -159,7 +159,9 @@ by Prelude.")
       (list start end))))
 
 (prelude-eval-after-init
- ;; greet the use with some useful tip
- (run-at-time 5 nil 'prelude-tip-of-the-day))
+ (progn
+   (server-start)
+   ;; greet the use with some useful tip
+   (run-at-time 5 nil 'prelude-tip-of-the-day)))
 
 ;;; init.el ends here
