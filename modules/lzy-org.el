@@ -45,6 +45,9 @@
 ;; can override the document org-agenda-files by setting your
 ;; org-agenda-files in the variable org-user-agenda-files
 ;;
+(setq sharedorg-directory (expand-file-name "org/" shared-directory))
+(setq zennote-directory (expand-file-name "telegram-bot/" sharedorg-directory))
+
 (if (boundp 'org-user-agenda-files)
     (setq org-agenda-files org-user-agenda-files)
   (setq org-agenda-files (list sharedorg-directory "~/org" zennote-directory)))
