@@ -33,6 +33,13 @@
 (require 'org)
 (require 'org-habit)
 
+;;;;;;;; Run the following to setup in maxos
+;; defaults write com.google.Chrome ExternalProtocolDialogShowAlwaysOpenCheckbox -bool true
+;; https://github.com/xuchunyang/setup-org-protocol-on-mac
+;; also it is possible to setup service so that quick capture can be used in any right click
+(require 'org-protocol)
+;;;;;;;;;
+
 (add-to-list 'auto-mode-alist '("\\.org\\'" . org-mode))
 
 
@@ -186,6 +193,12 @@
          "* NEXT Respond to %:from on %:subject\nSCHEDULED: %t\n%a\n" :clock-in t :clock-resume t :immediate-finish t)
         ("n" "note" entry (file ,(org-subfilepath "refile.org"))
          "* %? :NOTE:\n%a\n" :clock-in t :clock-resume t)
+        ("u" "Work Mics Protocol" entry (file+headline ,(concat sharedorg-directory "work.org") "Misc")
+         "* TODO %i \n\n  Source: %u\n\n"
+         :empty-lines 1 :immediate-finish t)
+        ("l" "Service Capture Protocol" entry (file ,(org-subfilepath "refile.org"))
+         "* TODO %i \n\n  Source: %u\n\n"
+         :empty-lines 1 :immediate-finish t)
         ("j" "Journal" entry (file+datetree ,(org-subfilepath "diary.org"))
          "* %?\n" :clock-in t :clock-resume t)
         ("o" "org-protocol" entry (file ,(org-subfilepath "refile.org"))
@@ -198,11 +211,9 @@
          "* NEXT %?\n%a\nSCHEDULED: %(format-time-string \"%<<%Y-%m-%d %a .+1d/3d>>\")\n:PROPERTIES:\n:STYLE: habit\n:REPEAT_TO_STATE: NEXT\n:END:\n")))
 
 (setq org-capture-templates-work
-      `(("w" "Templates for work.org captures")
+      `(("x" "Templates for work.org captures")
         ("wc" "CRI" entry (file+headline ,(concat sharedorg-directory "work.org") "CRI")
          "* TODO %?%c\n\n" :clock-in t :clock-resume t)
-        ("wm" "Mics" entry (file+headline ,(concat sharedorg-directory "work.org") "Misc")
-         "* TODO %?\n%a\n" :clock-in t :clock-resume t)
         ("w2" "Sev2" entry (file+headline ,(concat sharedorg-directory "work.org") "Sev2 Livesite")
          "* TODO %?%c\n\n" :clock-in t :clock-resume t)))
 

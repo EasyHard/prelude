@@ -32,3 +32,6 @@ var/
 .lsp-session*
 gotools/
 eln-cache/
+/org-persist
+abbrev_defs
+org-clock-save.el
