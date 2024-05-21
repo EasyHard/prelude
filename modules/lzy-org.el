@@ -194,10 +194,10 @@
         ("n" "note" entry (file ,(org-subfilepath "refile.org"))
          "* %? :NOTE:\n%a\n" :clock-in t :clock-resume t)
         ("u" "Work Mics Protocol" entry (file+headline ,(concat sharedorg-directory "work.org") "Misc")
-         "* TODO %i \n\n  Source: %u\n\n"
+         "* TODO %i\n"
          :empty-lines 1 :immediate-finish t)
         ("l" "Service Capture Protocol" entry (file ,(org-subfilepath "refile.org"))
-         "* TODO %i \n\n  Source: %u\n\n"
+         "* TODO %i \n\n  Source: %u\n"
          :empty-lines 1 :immediate-finish t)
         ("j" "Journal" entry (file+datetree ,(org-subfilepath "diary.org"))
          "* %?\n" :clock-in t :clock-resume t)
