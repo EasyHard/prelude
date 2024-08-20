@@ -199,6 +199,9 @@
         ("l" "Service Capture Protocol" entry (file ,(org-subfilepath "refile.org"))
          "* TODO %i \n\n  Source: %u\n"
          :empty-lines 1 :immediate-finish t)
+        ("k" "Web Capture Protocol" entry (file ,(org-subfilepath "refile.org"))
+         "* TODO %i \n URL: %a\n%?\nSource: %u\n"
+         :empty-lines 1 :immediate-finish t)
         ("j" "Journal" entry (file+datetree ,(org-subfilepath "diary.org"))
          "* %?\n" :clock-in t :clock-resume t)
         ("o" "org-protocol" entry (file ,(org-subfilepath "refile.org"))
@@ -212,10 +215,12 @@
 
 (setq org-capture-templates-work
       `(("x" "Templates for work.org captures")
-        ("wc" "CRI" entry (file+headline ,(concat sharedorg-directory "work.org") "CRI")
+        ("xc" "CRI" entry (file+headline ,(concat sharedorg-directory "work.org") "CRI")
          "* TODO %?%c\n\n" :clock-in t :clock-resume t)
-        ("w2" "Sev2" entry (file+headline ,(concat sharedorg-directory "work.org") "Sev2 Livesite")
-         "* TODO %?%c\n\n" :clock-in t :clock-resume t)))
+        ("xm" "Mics" entry (file+headline ,(concat sharedorg-directory "work.org") "Misc")
+         "* TODO %?%c\n\n" :clock-in t :clock-resume t)
+        ("x2" "Sev2" entry (file+headline ,(concat sharedorg-directory "work.org") "Sev2 Livesite")
+         "* TODO %?\n\n" :clock-in t :clock-resume t)))
 
 (setq org-capture-templates (append org-capture-templates org-capture-templates-work))
 
@@ -1935,19 +1940,20 @@ Late deadlines first, then scheduled, then non-late deadlines"
 (setq org-src-fontify-natively t)
 
 (setq org-structure-template-alist
-      (quote (("s" "#+begin_src ?\n\n#+end_src" "<src lang=\"?\">\n\n</src>")
-              ("e" "#+begin_example\n?\n#+end_example" "<example>\n?\n</example>")
-              ("q" "#+begin_quote\n?\n#+end_quote" "<quote>\n?\n</quote>")
-              ("v" "#+begin_verse\n?\n#+end_verse" "<verse>\n?\n</verse>")
-              ("c" "#+begin_center\n?\n#+end_center" "<center>\n?\n</center>")
-              ("l" "#+begin_latex\n?\n#+end_latex" "<literal style=\"latex\">\n?\n</literal>")
-              ("L" "#+latex: " "<literal style=\"latex\">?</literal>")
-              ("h" "#+begin_html\n?\n#+end_html" "<literal style=\"html\">\n?\n</literal>")
-              ("H" "#+html: " "<literal style=\"html\">?</literal>")
-              ("a" "#+begin_ascii\n?\n#+end_ascii")
-              ("A" "#+ascii: ")
-              ("i" "#+index: ?" "#+index: ?")
-              ("I" "#+include %file ?" "<include file=%file markup=\"?\">"))))
+      '(("p" . "src python")
+        ("b" . "src sh")
+        ("k" . "src kusto")
+        ("s" . "src")
+        ("e" . "example")
+        ("q" . "quote")
+        ("v" . "verse")
+        ("c" . "center")
+        ("l" . "latex")
+        ("h" . "html")
+        ("a" . "ascii")
+        ("i" . "index")
+        ("I" . "include")))
+
 
 (defun bh/mark-next-parent-tasks-todo ()
   "Visit each parent task and change NEXT states to TODO"
