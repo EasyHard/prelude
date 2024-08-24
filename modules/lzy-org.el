@@ -43,7 +43,7 @@
 (add-to-list 'auto-mode-alist '("\\.org\\'" . org-mode))
 
 
-
+(global-set-key (kbd"<f8>") 'org-agenda)
 (global-set-key "\C-ca" 'org-agenda)
 (global-set-key "\C-cb" 'org-switchb)
 (global-set-key (kbd "C-c c") 'org-capture)
@@ -55,18 +55,95 @@
 (setq sharedorg-directory (expand-file-name "org/" shared-directory))
 (setq zennote-directory (expand-file-name "telegram-bot/" sharedorg-directory))
 
-(if (boundp 'org-user-agenda-files)
-    (setq org-agenda-files org-user-agenda-files)
-  (setq org-agenda-files (list sharedorg-directory "~/org" zennote-directory)))
+(setq org-agenda-files (apply 'append
+			      (mapcar
+			       (lambda (directory)
+				 (directory-files-recursively
+				  directory org-agenda-file-regexp))
+			       (list sharedorg-directory ))))
+
+;; (if (boundp 'org-user-agenda-files)
+;;     (setq org-agenda-files org-user-agenda-files)
+;;   (setq org-agenda-files (list sharedorg-directory "~/org" zennote-directory)))
 
 (setq org-directory sharedorg-directory)
 
-
-
-;;;;;;;;; The following is a mess and need some cleanup ;;;;;;;;;;;;
+(require 'lzy-org-modern)
 
 (setq org-log-done t)
 (setq org-log-into-drawer t)
+
+(defun zy/org-mark-quick ()
+  "Set the Effort property to 0:05 if it is not already set to that value, and notify the user."
+  (interactive)
+  (let ((current-effort (org-entry-get nil "Effort")))
+    (if (string= current-effort "0:05")
+        (progn
+          (org-entry-delete nil "Effort")
+          (message "Effort is removed."))
+      (progn
+        (org-set-property "Effort" "0:05")
+        (message "Set effort to mark this as quick task")))))
+
+(defun zy/org-mark-meeting ()
+  (interactive)
+  (org-set-tags "Meeting"))
+
+(defun zy/org-mark-fixed ()
+  (interactive)
+  (org-set-tags "Fixed"))
+
+(defun zy/org-mark-important ()
+  "Set Priority to A if it is not already set to that value, and notify the user."
+  (interactive)
+  (let ((current-priority (org-entry-get nil "PRI")))
+    (if (string= current-priority "A")
+        (progn
+          (org-entry-delete nil "PRI")
+          (message "PRI is removed."))
+      (progn
+        (org-set-property "PRI" "A")
+        (message "Set PRI to mark this as important task")))))
+
+(defun zy/lift-to-org-agenda (f)
+  (org-agenda-check-no-diary)
+  (let* ((marker (or (org-get-at-bol 'org-marker)
+		     (org-agenda-error)))
+	 (hdmarker (or (org-get-at-bol 'org-hd-marker) marker))
+	 (pos (marker-position marker))
+	 (col (current-column))
+	 newhead)
+    (org-with-remote-undo (marker-buffer marker)
+      (with-current-buffer (marker-buffer marker)
+	(widen)
+	(goto-char pos)
+	(org-fold-show-context 'agenda)
+	(funcall f)
+	(setq newhead (org-get-heading)))
+      (org-agenda-redo))
+    (org-move-to-column col)))
+
+
+(defun zy/org-agenda-mark-important ()
+  (interactive)
+  (zy/lift-to-org-agenda 'zy/org-mark-important))
+(defun zy/org-agenda-mark-quick ()
+  (interactive)
+  (zy/lift-to-org-agenda 'zy/org-mark-quick))
+(defun zy/org-agenda-mark-fixed ()
+  (interactive)
+  (zy/lift-to-org-agenda 'zy/org-mark-fixed))
+(defun zy/org-agenda-mark-meeting ()
+  (interactive)
+  (zy/lift-to-org-agenda 'zy/org-mark-meeting))
+(add-hook 'org-agenda-mode-hook
+          '(lambda ()
+             (org-defkey org-agenda-mode-map (kbd "C-c m q") 'zy/org-agenda-mark-quick)
+             (org-defkey org-agenda-mode-map (kbd "C-c m m") 'zy/org-agenda-mark-meeting)
+             (org-defkey org-agenda-mode-map (kbd "C-c m i") 'zy/org-agenda-mark-important)
+             (org-defkey org-agenda-mode-map (kbd "C-c m f") 'zy/org-agenda-mark-fixed))
+          'append)
+
 
 (defun lzy-org-mode-defaults ()
   (let ((oldmap (cdr (assoc 'prelude-mode minor-mode-map-alist)))
@@ -78,8 +155,13 @@
       (define-key newmap (kbd key) nil))
     ;; Key bindings to set
     (let ((key-bindings '(("C-a" . org-beginning-of-line)
+                          ("C-c m q" . zy/org-mark-quick)
+                          ("C-c m m" . zy/org-mark-meeting)
+                          ("C-c m i" . zy/org-mark-important)
+                          ("C-c m f" . zy/org-mark-fixed)
                           ("<f9> q" . zy/org-mark-quick)
-                          ("<f9> p" . zy/org-mark-postponed))))
+                          ("<f9> m" . zy/org-mark-meeting)
+                          ("<f9> i" . zy/org-mark-important))))
       (dolist (binding key-bindings)
         (define-key newmap (kbd (car binding)) (cdr binding))))
     ;; Make minor-mode-overriding-map-alist local and update it
@@ -89,13 +171,149 @@
 ;; Ensure the function is called when org-mode is loaded
 (add-hook 'org-mode-hook 'lzy-org-mode-defaults)
 
-(defun zy/org-mark-quick ()
-  (interactive)
-  (org-set-tags "QUICK"))
+;; Allow todo items to inherite priority from higher level
+(defun my/org-inherited-priority (s)
+  (cond
+   ;; Priority cookie in this heading
+   ((string-match org-priority-regexp s)
+    (* 1000 (- org-priority-lowest
+               (org-priority-to-value (match-string 2 s)))))
+   ;; No priority cookie, but already at highest level
+   ((not (org-up-heading-safe))
+    (* 1000 (- org-priority-lowest org-priority-default)))
+   ;; Look for the parent's priority
+   (t
+    (my/org-inherited-priority (org-get-heading)))))
 
-(defun zy/org-mark-postponed ()
-  (interactive)
-  (org-set-tags "POSTPONED"))
+(setq org-priority-get-priority-function #'my/org-inherited-priority)
+
+(setq org-agenda-custom-commands
+      `(("u" "Schedule view"
+         ((agenda "" ((org-agenda-span 'day)
+                      (org-super-agenda-groups
+                       '((:name "Today"
+                          :time-grid t
+                          :date today
+                          :todo "TODAY"
+                          :scheduled today
+                          :order 1)))))
+          (alltodo "" ((Org-agenda-overriding-header "")
+                       (org-super-agenda-groups
+                        '(;; Each group has an implicit boolean OR operator between its selectors.
+                          (:discard (:category "Meeting" :tag "Meeting" :tag "Fixed"))
+                          ;;(:discard ())
+                          (:name "Deadline Today"
+                           :deadline today
+                           :face (:background "black"))
+                          (:name "Deadline in 14 days"
+                                 :deadline today
+                                 :face (:background "black"))
+                          (:name "Passed"
+                                 :and (:deadline past :todo ("TODO" "WAITING" "HOLD" "NEXT"))
+                                 :and (:scheduled past :todo ("TODO" "WAITING" "HOLD" "NEXT"))
+                                 :face (:background "#7f1b19"))
+                          (:name "Urgent"
+                                 :and (:priority>= "B" :effort< "0:05" :todo ("TODO" "NEXT"))
+                                 :and (:property ("PRI" "A") :effort< "0:05" :todo ("TODO" "NEXT")))
+                          (:name "Refile"
+                                 :and (:todo ("TODO" "WAITING" "HOLD" "NEXT")
+                                             :tag "REFILE"))
+                          (:discard (:scheduled today))
+                          (:name "Important not scheduled"
+                                 :and (:scheduled nil :priority>= "B" :effort> "0:06" :todo ("TODO" "NEXT"))
+                                 :and (:scheduled nil :priority>= "B" :not (:property "EFFORT") :todo ("TODO" "NEXT"))
+                                 :and (:scheduled nil :property ("PRI" "A") :effort> "0:06" :todo ("TODO" "NEXT"))
+                                 :and (:scheduled nil :property ("PRI" "A") :not (:property "EFFORT") :todo ("TODO" "NEXT")))
+                          (:name "Important scheduled"
+                                 :and (:priority>= "B" :effort> "0:06" :todo ("TODO" "NEXT"))
+                                 :and (:priority>= "B" :not (:property "EFFORT") :todo ("TODO" "NEXT"))
+                                 :and (:property ("PRI" "A") :effort> "0:06" :todo ("TODO" "NEXT"))
+                                 :and (:property ("PRI" "A") :not (:property "EFFORT") :todo ("TODO" "NEXT")))
+                          (:name "Small Stuffs"
+                                 :and (:priority< "B" :effort< "0:05" :todo ("TODO" "NEXT"))
+                                 :and (:not (:property "PRI") :effort< "0:05" :todo ("TODO" "NEXT")))
+                          (:name "Scheduled Future"
+                                 :scheduled future
+                                 :order 8
+                                 :face (:foreground "light gray"))
+                          (:name "Waiting"
+                           :todo "WAITING"
+                           :order 9
+                           :face (:foreground "gray"))
+                          (:name "On hold"
+                           :todo "HOLD"
+                           :order 10
+                           :face (:foreground "gray"))
+                          (:name "Other Items"
+                           :anything
+                                       ;; Show this section after "Today" and "Important", because
+                                       ;; their order is unspecified, defaulting to 0. Sections
+                                       ;; are displayed lowest-number-first.
+                           )))))))
+
+        ("a" "Action view"
+         ((agenda "" ((org-agenda-span 'day)
+                      (org-super-agenda-groups
+                       '((:name "Today"
+                          :time-grid t
+                          :date today
+                          :todo "TODAY"
+                          :scheduled today
+                          :order 1)))))
+          (alltodo "" ((Org-agenda-overriding-header "")
+                       (org-super-agenda-groups
+                        '(;; Each group has an implicit boolean OR operator between its selectors.
+                          (:discard (:category "Meeting" :tag "Meeting" :tag "Fixed"))
+
+                          ;;(:discard ())
+                          (:name "Deadline Today"
+                           :deadline today
+                           :face (:background "black"))
+                          (:name "Urgent"
+                                 :and (:priority>= "B" :effort< "0:05" :todo ("TODO" "NEXT"))
+                                 :and (:property ("PRI" "A") :effort< "0:05" :todo ("TODO" "NEXT")))
+                          (:name "Passed"
+                                 :and (:deadline past :todo ("TODO" "WAITING" "HOLD" "NEXT"))
+                                 :and (:scheduled past :todo ("TODO" "WAITING" "HOLD" "NEXT"))
+                           :face (:background "#7f1b19"))
+                          (:name "Refile"
+                                 :and (:todo ("TODO" "WAITING" "HOLD" "NEXT")
+                                             :tag "REFILE"))
+                          (:discard (:scheduled today))
+                          (:name "Important not scheduled"
+                                 :and (:scheduled nil :priority>= "B" :effort> "0:06" :todo ("TODO" "NEXT"))
+                                 :and (:scheduled nil :priority>= "B" :not (:property "EFFORT") :todo ("TODO" "NEXT"))
+                                 :and (:scheduled nil :property ("PRI" "A") :effort> "0:06" :todo ("TODO" "NEXT"))
+                                 :and (:scheduled nil :property ("PRI" "A") :not (:property "EFFORT") :todo ("TODO" "NEXT")))
+                          (:name "Important scheduled"
+                                 :and (:priority>= "B" :effort> "0:06" :todo ("TODO" "NEXT"))
+                                 :and (:priority>= "B" :not (:property "EFFORT") :todo ("TODO" "NEXT"))
+                                 :and (:property ("PRI" "A") :effort> "0:06" :todo ("TODO" "NEXT"))
+                                 :and (:property ("PRI" "A") :not (:property "EFFORT") :todo ("TODO" "NEXT")))
+                          (:name "Small Stuffs"
+                                 :and (:priority< "B" :effort< "0:05" :todo ("TODO" "NEXT"))
+                                 :and (:not (:property "PRI") :effort< "0:05" :todo ("TODO" "NEXT")))
+                          (:name "Scheduled Future"
+                                 :scheduled future
+                                 :order 8
+                                 :face (:foreground "light gray"))
+
+                          (:name "Waiting"
+                           :todo "WAITING"
+                           :order 9
+                           :face (:foreground "gray"))
+                          (:name "On hold"
+                           :todo "HOLD"
+                           :order 10
+                           :face (:foreground "gray"))
+                          (:name "Other Items"
+                           :anything
+                                       ;; Show this section after "Today" and "Important", because
+                                       ;; their order is unspecified, defaulting to 0. Sections
+                                       ;; are displayed lowest-number-first.
+                           )))))))))
+
+;;;;;;;;; The following is a mess and need some cleanup ;;;;;;;;;;;;
 
 (defun bh/hide-other ()
   (interactive)
@@ -305,6 +523,9 @@
 
 (setq org-refile-target-verify-function 'bh/verify-refile-target)
 
+(prelude-require-package 'org-super-agenda)
+(add-hook 'org-agenda-mode-hook 'org-super-agenda-mode)
+
 ;; Do not dim blocked tasks
 (setq org-agenda-dim-blocked-tasks nil)
 
@@ -379,41 +600,89 @@
     ))
 
 ;; Custom agenda command definitions
-(setq org-agenda-custom-commands
-      `(("N" "Notes" tags "NOTE"
-         ((org-agenda-overriding-header "Notes")
-          (org-tags-match-list-sublevels t)))
-        ("h" "Habits" tags-todo "STYLE=\"habit\""
-         ((org-agenda-overriding-header "Habits")
-          (org-agenda-sorting-strategy
-           '(todo-state-down effort-up category-keep))))
-        (" " "Today's agenda"
-         ((agenda "" nil)
-          (tags "REFILE"
-                ((org-agenda-overriding-header "Tasks to Refile")
-                 (org-tags-match-list-sublevels nil)))
-          ;; (tags-todo "Postponed"
-          ;;            ((org-agenda-overriding-header "Postponed Tasks")
-          ;;             (org-agenda-skip-function 'bh/skip-non-tasks)
-          ;;             (org-tags-match-list-sublevels 'indented)
-          ;;             (org-agenda-todo-ignore-scheduled 'future)))
-          (tags-todo "Quick"
-                     ((org-agenda-overriding-header (concat "Quick Tasks"
-                                                            (if bh/hide-scheduled-and-waiting-next-tasks
-                                                                ""
-                                                              " (including WAITING and SCHEDULED tasks)")))
-                      (org-agenda-skip-function 'bh/skip-non-tasks)
-                      (org-tags-match-list-sublevels nil)
-                      (org-agenda-todo-ignore-scheduled bh/hide-scheduled-and-waiting-next-tasks)
-                      (org-agenda-todo-ignore-deadlines bh/hide-scheduled-and-waiting-next-tasks)))
-          )
-         nil)
-        ("o" "tomorrow planning"
-         ,(planning-list "+1d")
-         nil)
-        ("g" "today planning"
-         ,(planning-list "")
-         nil)))
+;; (setq org-agenda-custom-commands
+;;       `(("a" "Action view"
+;;          ((agenda "" ((org-agenda-span 'day)
+;;                       (org-super-agenda-groups
+;;                        '((:name "Today"
+;;                           :time-grid t
+;;                           :date today
+;;                           :todo "TODAY"
+;;                           :scheduled today
+;;                           :order 1)))))
+;;           (alltodo "" ((org-agenda-overriding-header "")
+;;                        (org-super-agenda-groups
+;;                         '(;; Each group has an implicit boolean OR operator between its selectors.
+;;                           (:discard (:category "Meeting" :tag "Meeting"))
+;;                           ;;(:discard ())
+;;                           (:name "Deadline Today"
+;;                            :deadline today
+;;                            :face (:background "black"))
+;;                           (:name "Urgent"
+;;                                  :and (:priority>= "B" :effort< "0:05" :todo ("TODO" "NEXT"))
+;;                                  :and (:priority>= "B" :effort< "0:05" :todo ("TODO" "NEXT")))
+;;                           (:name "Passed Deadline"
+;;                            :and (:deadline past :todo ("TODO" "WAITING" "HOLD" "NEXT"))
+;;                            :face (:background "#7f1b19"))
+;;                           (:name "Passed Scheduled"
+;;                                  :and (:scheduled past :todo ("TODO" "WAITING" "HOLD" "NEXT"))
+;;                                  :face (:background "#7f1b19"))
+;;                           (:name "Refile"
+;;                                  :and (:todo ("TODO" "WAITING" "HOLD" "NEXT")
+;;                                              :tag "REFILE"))
+;;                           (:name "Important"
+;;                            :and (:priority>= "B" :effort> "0:06" :todo ("TODO" "NEXT")))
+;;                           (:name "Small Stuffs"
+;;                                  :and (:priority< "B" :effort< "0:05" :todo ("TODO" "NEXT")))
+
+;;                           (:name "Waiting"
+;;                            :todo "WAITING"
+;;                            :order 9)
+;;                           (:name "On hold"
+;;                            :todo "HOLD"
+;;                            :order 10)
+;;                           (:name "Other Items"
+;;                            :anything
+;;                                        ;; Show this section after "Today" and "Important", because
+;;                                        ;; their order is unspecified, defaulting to 0. Sections
+;;                                        ;; are displayed lowest-number-first.
+;;                            )))))))
+;;         ("N" "Notes" tags "NOTE"
+;;          ((org-agenda-overriding-header "Notes")
+;;           (org-tags-match-list-sublevels t)))
+;;         ("h" "Habits" tags-todo "STYLE=\"habit\""
+;;          ((org-agenda-overriding-header "Habits")
+;;           (org-agenda-sorting-strategy
+;;            '(todo-state-down effort-up category-keep))))
+;;         (" " "Today's agenda"
+;;          ((agenda "" nil)
+;;           (tags "REFILE"
+;;                 ((org-agenda-overriding-header "Tasks to Refile")
+;;                  (org-tags-match-list-sublevels nil)))
+;;           ;; (tags-todo "Postponed"
+;;           ;;            ((org-agenda-overriding-header "Postponed Tasks")
+;;           ;;             (org-agenda-skip-function 'bh/skip-non-tasks)
+;;           ;;             (org-tags-match-list-sublevels 'indented)
+;;           ;;             (org-agenda-todo-ignore-scheduled 'future)))
+;;           (tags-todo "Quick"
+;;                      ((org-agenda-overriding-header (concat "Quick Tasks"
+;;                                                             (if bh/hide-scheduled-and-waiting-next-tasks
+;;                                                                 ""
+;;                                                               " (including WAITING and SCHEDULED tasks)")))
+;;                       (org-agenda-skip-function 'bh/skip-non-tasks)
+;;                       (org-tags-match-list-sublevels nil)
+;;                       (org-agenda-todo-ignore-scheduled bh/hide-scheduled-and-waiting-next-tasks)
+;;                       (org-agenda-todo-ignore-deadlines bh/hide-scheduled-and-waiting-next-tasks)))
+;;           )
+;;          nil)
+;;         ("o" "tomorrow planning"
+;;          ,(planning-list "+1d")
+;;          nil)
+;;         ("g" "today planning"
+;;          ,(planning-list "")
+;;          nil)
+;;         )
+;;         )
 
 (defun bh/org-auto-exclude-function (tag)
   "Automatic task exclusion in the agenda with / RET"

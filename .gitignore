@@ -35,3 +35,5 @@ eln-cache/
 /org-persist
 abbrev_defs
 org-clock-save.el
+/.org-id-locations
+/diary
